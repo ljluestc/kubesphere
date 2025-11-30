@@ -1,0 +1,101 @@
+# SSH Authentication Example
+
+This example demonstrates how to use SSH authentication for Helm Chart repositories in KubeSphere.
+
+## Example Repository Configuration
+
+```yaml
+apiVersion: application.kubesphere.io/v2
+kind: Repo
+metadata:
+  name: my-ghe-helm-repo
+  namespace: default
+spec:
+  url: "git+ssh://git@github.enterprise.com/organization/helm-charts.git"
+  description: "Helm charts from GitHub Enterprise using SSH authentication"
+  credential:
+    sshPrivateKey: |
+      -----BEGIN RSA PRIVATE KEY-----
+      MIIEpAIBAAKCAQEA4f5wg5l2hKsTeNem/V41fGnJm6gOdrj8ym3rFkEjWT2btZb5
+      MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4f5wg5l2hKsTeNem/V41f
+      GnJm6gOdrj8ym3rFkEjWT2btZb5J+2rG1jyLQAiVJ8o6KsXlU8mKv3pNYuKJz4q
+      ... (your complete private key content) ...
+      -----END RSA PRIVATE KEY-----
+    sshKnownHosts: |
+      github.enterprise.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7VZV...
+```
+
+## Using with Kubernetes Secrets
+
+### Step 1: Create a secret with SSH credentials
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helm-ssh-credentials
+  namespace: default
+type: Opaque
+stringData:
+  sshPrivateKey: |
+    -----BEGIN RSA PRIVATE KEY-----
+    MIIEpAIBAAKCAQEA4f5wg5l2hKsTeNem/V41fGnJm6gOdrj8ym3rFkEjWT2btZb5
+    ... (your complete private key content) ...
+    -----END RSA PRIVATE KEY-----
+  sshKnownHosts: |
+    github.enterprise.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7VZV...
+```
+
+### Step 2: Reference the secret in your repository
+
+```yaml
+apiVersion: application.kubesphere.io/v2
+kind: Repo
+metadata:
+  name: secure-helm-repo
+  namespace: default
+spec:
+  url: "git+ssh://git@github.enterprise.com/organization/helm-charts.git"
+  description: "Secure Helm repository with SSH authentication"
+  credential:
+    sshPrivateKey: |
+      {{- $secret := lookup "v1" "Secret" "default" "helm-ssh-credentials" }}
+      {{- if $secret }}
+      {{ index $secret.data "sshPrivateKey" }}
+      {{- end }}
+    sshKnownHosts: |
+      {{- $secret := lookup "v1" "Secret" "default" "helm-ssh-credentials" }}
+      {{- if $secret }}
+      {{ index $secret.data "sshKnownHosts" }}
+      {{- end }}
+```
+
+## Supported URL Formats
+
+- `git+ssh://git@github.enterprise.com/organization/repo.git` (recommended)
+- `ssh://git@github.enterprise.com/organization/repo.git`
+
+## Key Features
+
+- **SSH Key Authentication**: Uses PEM-encoded private keys
+- **Passphrase Support**: Supports encrypted private keys
+- **Host Key Verification**: Optional known hosts verification
+- **GitHub Enterprise Compatible**: Works with GHE and other Git servers
+- **Automatic Chart Discovery**: Finds Chart.yaml or index.yaml in repositories
+
+## Testing the Configuration
+
+You can test your SSH configuration using:
+
+```bash
+# Test SSH connection
+ssh -T git@github.enterprise.com
+
+# Verify SSH key
+ssh-keygen -l -f /path/to/your/private/key
+
+# Get known hosts
+ssh-keyscan -t rsa,ecdsa github.enterprise.com
+```
+
+This feature enables secure, MFA-free access to private Helm Chart repositories using SSH keys, addressing the requirements described in the GitHub issue.

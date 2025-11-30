@@ -277,6 +277,12 @@ type RepoCredential struct {
 	CAFile string `json:"caFile,omitempty"`
 	// skip tls certificate checks for the repository, default is ture
 	InsecureSkipTLSVerify *bool `json:"insecureSkipTLSVerify,omitempty"`
+	// SSH private key for git+ssh:// and ssh:// repository authentication
+	SSHPrivateKey string `json:"sshPrivateKey,omitempty"`
+	// SSH key passphrase for encrypted private keys
+	SSHKeyPassphrase string `json:"sshKeyPassphrase,omitempty"`
+	// Known hosts file content for SSH host key verification
+	SSHKnownHosts string `json:"sshKnownHosts,omitempty"`
 }
 
 // RepoSpec defines the desired state of Repo

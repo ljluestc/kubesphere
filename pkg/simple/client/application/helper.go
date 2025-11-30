@@ -336,6 +336,11 @@ func HelmPull(u string, cred appv2.RepoCredential) (*bytes.Buffer, error) {
 		skipTLS = false
 	}
 
+	// Handle SSH URLs (git+ssh:// and ssh://)
+	if parsedURL.Scheme == "ssh" || parsedURL.Scheme == "git+ssh" {
+		return helmPullFromSSH(u, cred)
+	}
+
 	indexURL := parsedURL.String()
 	g, _ := getter.NewHTTPGetter()
 	options := []getter.Option{
@@ -356,6 +361,16 @@ func HelmPull(u string, cred appv2.RepoCredential) (*bytes.Buffer, error) {
 }
 
 func LoadRepoIndex(u string, cred appv2.RepoCredential) (idx helmrepo.IndexFile, err error) {
+	parsedURL, err := url.Parse(u)
+	if err != nil {
+		return idx, err
+	}
+
+	// Handle SSH URLs (git+ssh:// and ssh://)
+	if parsedURL.Scheme == "ssh" || parsedURL.Scheme == "git+ssh" {
+		return loadRepoIndexFromSSH(u, cred)
+	}
+
 	if registry.IsOCI(u) {
 		return LoadRepoIndexFromOci(u, cred)
 	}
@@ -608,4 +623,53 @@ func GetHelmKubeConfig(ctx context.Context, cluster *clusterv1alpha1.Cluster, ru
 		return config, err
 	}
 	return cluster.Spec.Connection.KubeConfig, nil
+}
+
+func helmPullFromSSH(u string, cred appv2.RepoCredential) (*bytes.Buffer, error) {
+	if cred.SSHPrivateKey == "" {
+		return nil, fmt.Errorf("SSH private key is required for SSH repository access")
+	}
+
+	// Create SSH getter
+	sshGetter, err := NewSSHGetter()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SSH getter: %v", err)
+	}
+
+	if err := sshGetter.SetSSHAuth(cred.SSHPrivateKey, cred.SSHKeyPassphrase, cred.SSHKnownHosts); err != nil {
+		return nil, fmt.Errorf("failed to set SSH authentication: %v", err)
+	}
+
+	// Get the chart content
+	return sshGetter.Get(u)
+}
+
+func loadRepoIndexFromSSH(u string, cred appv2.RepoCredential) (idx helmrepo.IndexFile, err error) {
+	if cred.SSHPrivateKey == "" {
+		return idx, fmt.Errorf("SSH private key is required for SSH repository access")
+	}
+
+	// Create SSH getter
+	sshGetter, err := NewSSHGetter()
+	if err != nil {
+		return idx, fmt.Errorf("failed to create SSH getter: %v", err)
+	}
+
+	if err := sshGetter.SetSSHAuth(cred.SSHPrivateKey, cred.SSHKeyPassphrase, cred.SSHKnownHosts); err != nil {
+		return idx, fmt.Errorf("failed to set SSH authentication: %v", err)
+	}
+
+	// Get the index.yaml content
+	resp, err := sshGetter.Get(u)
+	if err != nil {
+		return idx, err
+	}
+
+	// Parse the index.yaml
+	if err = yaml.Unmarshal(resp.Bytes(), &idx); err != nil {
+		return idx, err
+	}
+	idx.SortEntries()
+
+	return idx, nil
 }
