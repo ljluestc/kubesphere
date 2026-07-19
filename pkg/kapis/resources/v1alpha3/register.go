@@ -23,6 +23,7 @@ import (
 	"kubesphere.io/kubesphere/pkg/apiserver/runtime"
 	"kubesphere.io/kubesphere/pkg/models/components"
 	v2 "kubesphere.io/kubesphere/pkg/models/registries/v2"
+	ingressmodel "kubesphere.io/kubesphere/pkg/models/resources/v1alpha3/ingress"
 	resourcev1alpha3 "kubesphere.io/kubesphere/pkg/models/resources/v1alpha3/resource"
 	"kubesphere.io/kubesphere/pkg/simple/client/overview"
 
@@ -174,6 +175,22 @@ func (h *handler) AddToContainer(c *restful.Container) error {
 		Param(ws.QueryParameter(query.ParameterLimit, "limit").Required(false)).
 		Param(ws.QueryParameter(query.ParameterAscending, "sort parameters, e.g. reverse=true").Required(false).DefaultValue("ascending=false")).
 		Returns(http.StatusOK, api.StatusOK, v2.RepositoryTags{}))
+
+	ws.Route(ws.GET("/pathTypes").
+		To(h.ListPathTypes).
+		Doc("List supported Kubernetes Ingress path types (Exact, Prefix, ImplementationSpecific)").
+		Metadata(restfulspec.KeyOpenAPITags, []string{api.TagClusterResources}).
+		Operation("list-ingress-path-types").
+		Returns(http.StatusOK, api.StatusOK, ingressmodel.SupportedPathTypes))
+
+	ws.Route(ws.GET("/namespaces/{namespace}/ingresses/{ingress}/paths").
+		To(h.GetIngressPaths).
+		Doc("List HTTP path rules of an Ingress with pathType, host, path, and backend service details").
+		Metadata(restfulspec.KeyOpenAPITags, []string{api.TagNamespacedResources}).
+		Operation("get-ingress-paths").
+		Param(ws.PathParameter("namespace", "The namespace of the Ingress.")).
+		Param(ws.PathParameter("ingress", "The name of the Ingress.")).
+		Returns(http.StatusOK, api.StatusOK, []ingressmodel.IngressPath{}))
 
 	ws.Route(ws.GET("/metrics").
 		To(h.GetClusterOverview).

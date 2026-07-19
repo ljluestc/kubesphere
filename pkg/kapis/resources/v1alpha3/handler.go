@@ -14,6 +14,7 @@ import (
 
 	"github.com/emicklei/go-restful/v3"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -21,6 +22,7 @@ import (
 	"kubesphere.io/kubesphere/pkg/api"
 	"kubesphere.io/kubesphere/pkg/apiserver/query"
 	"kubesphere.io/kubesphere/pkg/models/components"
+	ingressmodel "kubesphere.io/kubesphere/pkg/models/resources/v1alpha3/ingress"
 	"kubesphere.io/kubesphere/pkg/models/registries/imagesearch"
 	"kubesphere.io/kubesphere/pkg/models/registries/imagesearch/dockerhub"
 	"kubesphere.io/kubesphere/pkg/models/registries/imagesearch/harbor"
@@ -269,6 +271,47 @@ func (h *handler) SearchImages(request *restful.Request, response *restful.Respo
 	}
 
 	_ = response.WriteEntity(results)
+}
+
+// GetIngressPaths returns the flattened list of HTTP path rules defined in a
+// named Ingress, with each entry carrying host, path, pathType, and backend
+// service details.  This gives the frontend a clear, type-safe view of the
+// routing configuration without needing to navigate the nested Ingress spec.
+func (h *handler) GetIngressPaths(request *restful.Request, response *restful.Response) {
+	namespace := request.PathParameter("namespace")
+	ingressName := request.PathParameter("ingress")
+
+	obj, err := h.resourceGetterV1alpha3.Get("ingresses", namespace, ingressName)
+	if err != nil {
+		if err == resourcev1alpha3.ErrResourceNotSupported {
+			api.HandleNotFound(response, request, err)
+			return
+		}
+		if errors.IsNotFound(err) {
+			api.HandleNotFound(response, request, err)
+			return
+		}
+		klog.Error(err)
+		api.HandleError(response, request, err)
+		return
+	}
+
+	ingress, ok := obj.(*networkingv1.Ingress)
+	if !ok {
+		api.HandleInternalError(response, request, fmt.Errorf("unexpected object type for ingress %s/%s", namespace, ingressName))
+		return
+	}
+
+	paths := ingressmodel.ListIngressPaths(ingress)
+	_ = response.WriteAsJson(paths)
+}
+
+// ListPathTypes returns the three path types supported by the Kubernetes Ingress
+// API (Exact, Prefix, ImplementationSpecific).  The UI should query this
+// endpoint to populate the path-type selector so all valid options are always
+// presented, regardless of which ingress controller is deployed.
+func (h *handler) ListPathTypes(_ *restful.Request, response *restful.Response) {
+	_ = response.WriteAsJson(ingressmodel.SupportedPathTypes)
 }
 
 func canonicalizeRegistryError(request *restful.Request, response *restful.Response, err error) {
